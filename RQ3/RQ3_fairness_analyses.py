@@ -157,26 +157,78 @@ def subgroup_metrics(df, group_col):
 
     return pd.DataFrame(rows)
 
-def plot_conf_matrix(y_true, y_pred, title, save_path=None):
-    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+def plot_combined_confusion_matrices(subgroups, output_dir):
+    """
+    Create a combined 2x2 publication-ready figure of confusion matrices.
+    subgroups: list of (title, y_true, y_pred) tuples ordered as:
+               (a) Gender: Men, (b) Gender: Women, (c) Age: Older, (d) Age: Younger
+    """
+    cms = [confusion_matrix(y_true, y_pred, labels=[0, 1])
+           for _, y_true, y_pred in subgroups]
 
-    plt.figure(figsize=(4, 4))
-    sns.heatmap(
-        cm,
-        annot=True,
-        fmt="d",
-        cmap="Blues",
-        xticklabels=["Pred 0", "Pred 1"],
-        yticklabels=["True 0", "True 1"]
-    )
-    plt.title(title)
-    plt.xlabel("Predicted")
-    plt.ylabel("Actual")
-    plt.tight_layout()
+    vmin = 0
+    vmax = max(cm.max() for cm in cms)
 
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    class_labels = ["No CVD", "CVD"]
+    corner_labels = [["TN", "FP"], ["FN", "TP"]]
+    subplot_letters = ["(a)", "(b)", "(c)", "(d)"]
 
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    fig.subplots_adjust(hspace=0.38, wspace=0.32, right=0.84)
+
+    cmap = plt.cm.Blues
+    im_ref = None
+
+    for idx, ((title, y_true, y_pred), cm) in enumerate(zip(subgroups, cms)):
+        ax = axes[idx // 2, idx % 2]
+
+        row_sums = cm.sum(axis=1, keepdims=True)
+        cm_pct = np.where(row_sums > 0, cm / row_sums * 100, 0.0)
+
+        fn, tp = cm[1, 0], cm[1, 1]
+        fnr = fn / (fn + tp) if (fn + tp) > 0 else float("nan")
+
+        im_ref = ax.imshow(cm, cmap=cmap, vmin=vmin, vmax=vmax, aspect="equal")
+
+        # Cell separators
+        ax.axhline(0.5, color="white", linewidth=1.5)
+        ax.axvline(0.5, color="white", linewidth=1.5)
+
+        # Cell annotations
+        for i in range(2):
+            for j in range(2):
+                count = cm[i, j]
+                pct = cm_pct[i, j]
+                label = corner_labels[i][j]
+
+                if i == 1 and j == 0:
+                    text = f"{label}\n{count}\n({pct:.1f}%)\nFNR = {fnr:.3f}"
+                else:
+                    text = f"{label}\n{count}\n({pct:.1f}%)"
+
+                text_color = "white" if cm[i, j] > vmax * 0.65 else "black"
+                ax.text(j, i, text, ha="center", va="center",
+                        fontsize=9, color=text_color, fontweight="bold",
+                        linespacing=1.4)
+
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(class_labels, fontsize=9)
+        ax.set_yticks([0, 1])
+        ax.set_yticklabels(class_labels, fontsize=9, rotation=90, va="center")
+        ax.set_xlabel("Predicted class", fontsize=10, labelpad=6)
+        ax.set_ylabel("Actual class", fontsize=10, labelpad=6)
+        ax.set_title(f"{subplot_letters[idx]} {title}", fontsize=11,
+                     fontweight="bold", pad=8)
+
+    # Shared colorbar
+    cbar_ax = fig.add_axes([0.87, 0.15, 0.02, 0.68])
+    cbar = fig.colorbar(im_ref, cax=cbar_ax)
+    cbar.set_label("Count", fontsize=10, labelpad=8)
+    cbar.ax.tick_params(labelsize=9)
+
+    save_path = os.path.join(output_dir, "subgroup_confusion_matrices.pdf")
+    plt.savefig(save_path, dpi=300, bbox_inches="tight", format="pdf")
+    print(f"\nSaved combined confusion matrices to: {save_path}")
     plt.show()
 
 def metricframe_by_group(df, sensitive_col):
@@ -403,26 +455,45 @@ print("\nStatistical tests")
 print(stat_tests_df.round(6))
 
 # ============================================================
-# 12. Confusion matrices per subgroup
+# 12. Confusion matrices per subgroup - combined figure
 # ============================================================
 
-for group in sorted(rq3_df["gender_group"].dropna().unique()):
-    subset = rq3_df[rq3_df["gender_group"] == group]
-    plot_conf_matrix(
-        subset["y_true"],
-        subset["y_pred"],
-        title=f"Confusion Matrix - Gender: {group}",
-        save_path=os.path.join(output_dir, f"cm_gender_{group}.png")
+# Print per-subgroup confusion matrix metrics
+subgroups_for_metrics = [
+    ("Gender: Men",    rq3_df[rq3_df["gender_group"] == "men"]),
+    ("Gender: Women",  rq3_df[rq3_df["gender_group"] == "women"]),
+    ("Age: Older",     rq3_df[rq3_df["age_group"] == "older"]),
+    ("Age: Younger",   rq3_df[rq3_df["age_group"] == "younger"]),
+]
+
+header = f"{'Subgroup':<20} {'TN':>6} {'FP':>6} {'FN':>6} {'TP':>6} {'FNR':>8} {'FPR':>8} {'Recall':>8} {'Specificity':>12}"
+print("\nPer-subgroup confusion matrix metrics:")
+print(header)
+print("-" * len(header))
+for label, subset in subgroups_for_metrics:
+    m = compute_metrics(subset["y_true"], subset["y_pred"])
+    print(
+        f"{label:<20} {m['tn']:>6} {m['fp']:>6} {m['fn']:>6} {m['tp']:>6} "
+        f"{m['fnr']:>8.4f} {m['fpr']:>8.4f} {m['recall']:>8.4f} {m['specificity']:>12.4f}"
     )
 
-for group in sorted(rq3_df["age_group"].dropna().unique()):
-    subset = rq3_df[rq3_df["age_group"] == group]
-    plot_conf_matrix(
-        subset["y_true"],
-        subset["y_pred"],
-        title=f"Confusion Matrix - Age: {group}",
-        save_path=os.path.join(output_dir, f"cm_age_{group}.png")
-    )
+# Combined publication-ready figure
+subgroup_plot_data = [
+    ("Gender: Men",
+     rq3_df[rq3_df["gender_group"] == "men"]["y_true"],
+     rq3_df[rq3_df["gender_group"] == "men"]["y_pred"]),
+    ("Gender: Women",
+     rq3_df[rq3_df["gender_group"] == "women"]["y_true"],
+     rq3_df[rq3_df["gender_group"] == "women"]["y_pred"]),
+    ("Age: Older",
+     rq3_df[rq3_df["age_group"] == "older"]["y_true"],
+     rq3_df[rq3_df["age_group"] == "older"]["y_pred"]),
+    ("Age: Younger",
+     rq3_df[rq3_df["age_group"] == "younger"]["y_true"],
+     rq3_df[rq3_df["age_group"] == "younger"]["y_pred"]),
+]
+
+plot_combined_confusion_matrices(subgroup_plot_data, output_dir)
 
 # ============================================================
 # 13. Optional plots: probability by error type

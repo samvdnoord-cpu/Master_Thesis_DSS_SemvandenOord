@@ -216,3 +216,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# results 
+results_naive_bayes
+resultaten_logistische_regressie
+results_random_forest
+results_XGboost
+final_model_rq1
+statistical_model_comparison_f1_v2.csv
+RQ2_SHAP_bar_test.pdf
+RQ2_SHAP_bar_test.png
+RQ2_SHAP_bar_train.pdf
+RQ2_SHAP_bar_train.png
+RQ2_SHAP_beeswarm_test.pdf
+RQ2_SHAP_beeswarm_test.png
+RQ2_SHAP_beeswarm_train.pdf
+RQ2_SHAP_beeswarm_train.png
+RQ2_feature_importance_xgb.csv
+rq3_results
