@@ -1,4 +1,6 @@
-## packages chat 
+# --- RQ1 Model: Random Forest ---
+
+# --- Imports ---
 import openml
 import numpy as np
 import pandas as pd
@@ -25,8 +27,7 @@ def log(message):
 
 log("script started")
 
-## chat (map aanmaken)
-# Maak results map aan
+# --- Create output directory for results ---
 results_dir = "results_random_forest"
 
 if not os.path.exists(results_dir):
@@ -35,9 +36,7 @@ if not os.path.exists(results_dir):
 else:
     print(f"Map '{results_dir}' bestaat al", flush=True)
 
-## Loading in the data 
-## loading in the data 
-# Data loading in 
+# --- Load dataset from OpenML ---
 log("OpenML dataset loading: 45547")
 
 
@@ -49,58 +48,58 @@ df, y, categorical_indicator, attribute_names = dataset.get_data(
 
 log(f"Dataset loaded with shape: {df.shape}")
 
-## preprocessing 
-# because random forest is a tree based model there is not a lot of preprocessing necessary. 
+# --- Preprocessing ---
+# Random Forest is tree-based, so minimal preprocessing is required
 
-# making a copy of the dataset 
+# Working copy of the dataset
 df_CVD = df.copy()
 
-## 1. basic transformations 
+# 1. Basic transformations
 log("Basis transformation started")
 
-# age: from days to years
+# Convert age from days to years
 df_CVD["age"] = df_CVD["age"] / 365.25
 
-# correct datatypes 
-for col in ["height", "weight", "ap_hi", "ap_lo", "gender", "cardio"]: 
+# Correct data types
+for col in ["height", "weight", "ap_hi", "ap_lo", "gender", "cardio"]:
     df_CVD[col] = pd.to_numeric(df_CVD[col], errors="coerce").astype("int64")
 
-# 2. Cleaning bloos pressure 
+# 2. Remove implausible blood pressure values
 df_CVD_cleaned = df_CVD[
     (df_CVD["ap_hi"] >= 40) & (df_CVD["ap_hi"] <= 300) &
     (df_CVD["ap_lo"] >= 40) & (df_CVD["ap_lo"] <= 200) &
     (df_CVD["ap_hi"] > df_CVD["ap_lo"])
 ]
 
-# 3. Cleaning height 
+# 3. Remove implausible height values
 df_CVD_cleaned = df_CVD_cleaned[
     (df_CVD_cleaned["height"] >= 120) & (df_CVD_cleaned["height"] <= 220)
     ]
 
-# 4. Cleaning weight 
+# 4. Remove implausible weight values
 df_CVD_cleaned = df_CVD_cleaned[
     (df_CVD_cleaned["weight"] >= 20) & (df_CVD_cleaned["weight"] <= 250)
     ]
 
-# 5. Gender recoding: 
-## orginal code: 1 = women, 2 = men 
+# 5. Recode gender: original encoding 1 = women, 2 = men → recoded to 1 = women, 0 = men
 df_CVD_cleaned["gender"] = df_CVD_cleaned["gender"].replace({1: 1, 2: 0})
 
-## checking 
+# Sanity check
 print(df_CVD_cleaned.describe())
 print(df_CVD_cleaned.head())
 
-# devide into X and y 
+# Separate features and target
 X = df_CVD_cleaned.drop(columns=["cardio"])
 y = df_CVD_cleaned["cardio"]
 
-##----------- preprocess pipline ----------------- ###
-#1) define columns 
+# --- Preprocessing pipeline ---
+
+# 1. Define column groups
 numeric_features = ["age", "height", "ap_hi", "ap_lo", "weight"]
-binary_features = ["gender", "smoke", "alco", "active"] 
+binary_features = ["gender", "smoke", "alco", "active"]
 ordinal_features = ["cholesterol", "gluc"]
 
-# 2) define pipeline 
+# 2. Build column transformer (passthrough — Random Forest handles raw values natively)
 preprocessor_randomforest = ColumnTransformer(
     transformers=[
         ("num" , "passthrough", numeric_features),
@@ -110,25 +109,26 @@ preprocessor_randomforest = ColumnTransformer(
     remainder="drop"
 )
 
-##--------- Modeling pipeline random forest ---------###
-### hyperparameters 
+# --- Modeling pipeline: Random Forest with repeated nested cross-validation ---
+
+# Hyperparameter search space
 param_dist = {
     "model__n_estimators": [50, 100, 200],
     "model__max_depth": [5, 10, 20, None],
-    "model__min_samples_split": [2, 5, 10], 
+    "model__min_samples_split": [2, 5, 10],
     "model__min_samples_leaf": [1, 2, 4],
     "model__max_features": ["sqrt", "log2", None],
     "model__bootstrap": [True, False],
     }
 
-## Repeated nested cross validatipn
+# Four outer seeds to repeat the nested CV and reduce variance in performance estimates
 outer_seeds = [11, 22, 33, 44]
 
 all_results_randomforest = []
 best_params_randomforest = []
 
-for seed in outer_seeds: 
-    #### outer loop:
+for seed in outer_seeds:
+    # Outer loop: 5-fold stratified CV for unbiased performance estimation
     log(f"starting outer CV voor seed={seed}")
     outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
 
@@ -139,9 +139,9 @@ for seed in outer_seeds:
         randomforest_pipeline = Pipeline(steps=[
             ("preprocessor", preprocessor_randomforest),
             ("model", RandomForestClassifier(random_state=seed, n_jobs=1))])
-        
+
         log(f"starting inner CV voor seed={seed}, fold={fold_idx}")
-        ### inner loop:
+        # Inner loop: 3-fold CV for hyperparameter selection
         inner_cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
 
         search = RandomizedSearchCV(
@@ -157,16 +157,13 @@ for seed in outer_seeds:
 
         search.fit(X_train, y_train)
 
-        ### best model refit on outer Cv trained on trained set and tested on that test set. 
+        # Best model from inner CV, evaluated on the outer test fold
         best_model_randomforest = search.best_estimator_
 
-        ## evalutate on test fold of outer Cv
         y_pred_rf = best_model_randomforest.predict(X_test)
         y_proba_rf = best_model_randomforest.predict_proba(X_test)[:, 1]
 
         tn, fp, fn, tp = confusion_matrix(y_test, y_pred_rf).ravel()
-
-        ## kopied out of chat!!!
 
         fold_result = {
             "seed": seed,
@@ -192,7 +189,7 @@ for seed in outer_seeds:
         })
 
 
-## summarize the results (niet meer kopied chat)
+# --- Summarize nested CV results ---
 log("summarizing of results")
 results_df_rf = pd.DataFrame(all_results_randomforest)
 
@@ -200,7 +197,6 @@ summary_rf = results_df_rf[
     ["accuracy", "f1", "precision", "recall", "roc_auc", "specificity"]
 ].agg(["mean", "std"]).T
 
-### kopied out of chat 
 print("\nRandom Forest - Repeated Nested CV Summary")
 print(summary_rf)
 
@@ -222,16 +218,11 @@ for col in param_cols:
     print(best_params_df[col].value_counts().head(10))
 
 
-## nog toevoegen een complete errror analyse 
-
-
-## save the output in a CSV file to make a comaprison
+# --- Save nested CV results to CSV ---
 #results_df_rf.to_csv("results_randomforest_v2.csv", index=False)
 
-## chat zodat in juiste map wordt opgeslagen
 results_df_rf.to_csv(os.path.join(results_dir, "results_randomforest_v2.csv"), index=False)
 summary_rf.to_csv(os.path.join(results_dir, "summary_randomforest_v2.csv"))
 best_params_df.to_csv(os.path.join(results_dir, "best_params_randomforest_v2.csv"), index=False)
 
-## chat
 log("Bestanden opgeslagen: results_randomforest_v2.csv, summary_randomforest_v2.csv, best_params_randomforest_v2.csv")

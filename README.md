@@ -1,14 +1,14 @@
 # Master_Thesis_SemvandenOord_v2
 
-## Stappenplan
+## Step-by-step guide
 
-De scripts moeten in de volgende volgorde worden uitgevoerd. Latere stappen zijn afhankelijk van de uitvoer van eerdere stappen.
+The scripts must be executed in the following order. Later steps depend on the output of earlier steps.
 
 ---
 
-### Stap 1 — RQ1: Exploratory Data Analysis
+### Step 1 — RQ1: Exploratory Data Analysis
 
-Voer eerst de EDA uit om het dataset te verkennen voordat de modellen worden getraind.
+Run the EDA first to explore the dataset before training the models.
 
 ```bash
 python RQ1/EDA.py
@@ -16,9 +16,9 @@ python RQ1/EDA.py
 
 ---
 
-### Stap 2 — RQ1: Modeltraining (afzonderlijk uitvoeren)
+### Step 2 — RQ1: Model training (run separately)
 
-Train elk van de vier classificatiemodellen afzonderlijk. De scripts slaan de resultaten en modelbestanden op die nodig zijn voor de volgende stappen.
+Train each of the four classification models separately. The scripts save the results and model files needed for subsequent steps.
 
 ```bash
 python RQ1/RQ1_naive_bayes.py
@@ -27,13 +27,13 @@ python RQ1/RQ1_random_forest.py
 python RQ1/RQ1_XGBoost.py
 ```
 
-> Let op: elk script slaat resultaten op als CSV-bestand. Zorg dat alle vier scripts succesvol zijn afgerond voordat je verdergaat met stap 3.
+> Note: each script saves its results as a CSV file. Make sure all four scripts have completed successfully before proceeding to step 3.
 
 ---
 
-### Stap 3 — RQ1: Statistische vergelijking van modellen
+### Step 3 — RQ1: Statistical comparison of models
 
-Vergelijk de prestaties van de vier modellen statistisch. Dit script laadt de CSV-resultaten van stap 2 en vereist dat alle vier modellen zijn gerund.
+Statistically compare the performance of the four models. This script loads the CSV results from step 2 and requires all four models to have been run.
 
 ```bash
 python RQ1/RQ1_statistical_comparison.py
@@ -41,9 +41,9 @@ python RQ1/RQ1_statistical_comparison.py
 
 ---
 
-### Stap 4 — RQ2: SHAP-analyse (modelinterpretatie)
+### Step 4 — RQ2: SHAP analysis (model interpretation)
 
-Voer de SHAP-analyse uit op het beste model (XGBoost) om de modelvoorspellingen te verklaren. Dit script laadt de opgeslagen XGBoost-pipeline en de bijbehorende datasplits uit stap 2.
+Run the SHAP analysis on the best model (XGBoost) to explain model predictions. This script loads the saved XGBoost pipeline and corresponding data splits from step 2.
 
 ```bash
 python RQ2/RQ2_SHAP_analysis.py
@@ -51,9 +51,9 @@ python RQ2/RQ2_SHAP_analysis.py
 
 ---
 
-### Stap 5 — RQ3: Fairness-analyse
+### Step 5 — RQ3: Fairness analysis
 
-Evalueer de eerlijkheid en subgroepprestaties van het XGBoost-model. Dit script test het model op een vaste held-out testset en berekent fairness-metrics per subgroep.
+Evaluate the fairness and subgroup performance of the XGBoost model. This script tests the model on a fixed held-out test set and computes fairness metrics per subgroup.
 
 ```bash
 python RQ3/RQ3_fairness_analyses.py
@@ -61,14 +61,14 @@ python RQ3/RQ3_fairness_analyses.py
 
 ---
 
-## Afhankelijkheden tussen stappen
+## Dependencies between steps
 
 ```
-EDA (stap 1)
-    └── Modeltraining RQ1 (stap 2)
-            ├── Statistische vergelijking RQ1 (stap 3)
-            ├── SHAP-analyse RQ2 (stap 4)
-            └── Fairness-analyse RQ3 (stap 5)
+EDA (step 1)
+    └── Model training RQ1 (step 2)
+            ├── Statistical comparison RQ1 (step 3)
+            ├── SHAP analysis RQ2 (step 4)
+            └── Fairness analysis RQ3 (step 5)
 ```
 
-Stappen 3, 4 en 5 kunnen pas worden uitgevoerd nadat stap 2 volledig is afgerond.
+Steps 3, 4, and 5 can only be run after step 2 has fully completed.

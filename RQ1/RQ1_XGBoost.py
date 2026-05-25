@@ -1,8 +1,4 @@
-#### RQ1 model 3:XGBoost ####
-
-
-##---- packages---###
-## ---------------- Packages ---------------- ##
+# --- Imports ---
 
 # Data handling
 import numpy as np
@@ -38,7 +34,7 @@ from sklearn.metrics import (
 # XGBoost
 from xgboost import XGBClassifier
 
-# Hyperparameter distributions (voor later uitbreiden)
+# Hyperparameter distributions
 from scipy.stats import randint, uniform
 
 import joblib
@@ -49,8 +45,7 @@ def log(message):
 
 log("script started")
 
-## chat (map aanmaken)
-# Maak results map aan
+# --- Create output directory for results ---
 results_dir = "results_XGboost"
 
 if not os.path.exists(results_dir):
@@ -59,68 +54,64 @@ if not os.path.exists(results_dir):
 else:
     print(f"Map '{results_dir}' bestaat al", flush=True)
 
-###---cleaning of data----###
-## Loading in the data 
-## loading in the data 
-# Data loading in 
+# --- Load dataset from OpenML ---
 dataset = openml.datasets.get_dataset(45547)
 
 df, y, categorical_indicator, attribute_names = dataset.get_data(
     dataset_format="dataframe"
 )
 
-## preprocessing 
-# because random forest is a tree based model there is not a lot of preprocessing necessary. 
+# --- Preprocessing ---
+# XGBoost is tree-based, so minimal preprocessing is required
 
-# making a copy of the dataset 
+# Working copy of the dataset
 df_CVD = df.copy()
 
-## 1. basic transformations 
-# age: from days to years
+# 1. Convert age from days to years
 df_CVD["age"] = df_CVD["age"] / 365.25
 
-# correct datatypes 
-for col in ["height", "weight", "ap_hi", "ap_lo", "gender", "cardio"]: 
+# 2. Correct data types
+for col in ["height", "weight", "ap_hi", "ap_lo", "gender", "cardio"]:
     df_CVD[col] = pd.to_numeric(df_CVD[col], errors="coerce").astype("int64")
 
-# 2. Cleaning bloos pressure 
+# 3. Remove implausible blood pressure values
 df_CVD_cleaned = df_CVD[
     (df_CVD["ap_hi"] >= 40) & (df_CVD["ap_hi"] <= 300) &
     (df_CVD["ap_lo"] >= 40) & (df_CVD["ap_lo"] <= 200) &
     (df_CVD["ap_hi"] > df_CVD["ap_lo"])
 ]
 
-# 3. Cleaning height 
+# 4. Remove implausible height values
 df_CVD_cleaned = df_CVD_cleaned[
     (df_CVD_cleaned["height"] >= 120) & (df_CVD_cleaned["height"] <= 220)
     ]
 
-# 4. Cleaning weight 
+# 5. Remove implausible weight values
 df_CVD_cleaned = df_CVD_cleaned[
     (df_CVD_cleaned["weight"] >= 20) & (df_CVD_cleaned["weight"] <= 250)
     ]
 
-# 5. Gender recoding: 
-## orginal code: 1 = women, 2 = men 
+# 6. Recode gender: original encoding 1 = women, 2 = men → recoded to 1 = women, 0 = men
 df_CVD_cleaned["gender"] = df_CVD_cleaned["gender"].replace({1: 1, 2: 0})
 
-## checking 
+# Sanity check
 print(df_CVD_cleaned.describe())
 print(df_CVD_cleaned.head())
 
-# devide into X and y 
+# Separate features and target
 X = df_CVD_cleaned.drop(columns=["cardio"])
 y = df_CVD_cleaned["cardio"]
 
 #-----------------------------------------------------------------------
 
-###-----preprocessing pipeline---###
-#1) define columns 
+# --- Preprocessing pipeline ---
+
+# 1. Define column groups
 numeric_features = ["age", "height", "ap_hi", "ap_lo", "weight"]
-binary_features = ["gender", "smoke", "alco", "active"] 
+binary_features = ["gender", "smoke", "alco", "active"]
 ordinal_features = ["cholesterol", "gluc"]
 
-# 2) define pipeline 
+# 2. Build column transformer (passthrough — XGBoost handles raw values natively)
 preprocessor_XGboost = ColumnTransformer(
     transformers=[
         ("num" , "passthrough", numeric_features),
@@ -131,12 +122,9 @@ preprocessor_XGboost = ColumnTransformer(
 )
 
 
+# --- Modeling pipeline: XGBoost with repeated nested cross-validation ---
 
-
-####---- modeling pipeline XGBoost----####
-##--------- Modeling pipeline XGBoost ---------###
-
-### hyperparameters - small compute version
+# Hyperparameter search space
 param_dist_xgb = {
     "model__n_estimators": [50, 100, 200],
     "model__max_depth": [3, 6, 9],
@@ -149,14 +137,14 @@ param_dist_xgb = {
     "model__reg_lambda": [0.5, 1, 2],
 }
 
-## Repeated nested cross validation
+# Four outer seeds to repeat the nested CV and reduce variance in performance estimates
 outer_seeds = [11, 22, 33, 44]
 
 all_results_xgb = []
 best_params_xgb = []
 
 for seed in outer_seeds:
-    #### outer loop:
+    # Outer loop: 5-fold stratified CV for unbiased performance estimation
     outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
 
     for fold_idx, (train_idx, test_idx) in enumerate(outer_cv.split(X, y), start=1):
@@ -175,7 +163,7 @@ for seed in outer_seeds:
             ))
         ])
 
-        ### inner loop:
+        # Inner loop: 3-fold CV for hyperparameter selection
         inner_cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
 
         search = RandomizedSearchCV(
@@ -191,10 +179,9 @@ for seed in outer_seeds:
 
         search.fit(X_train, y_train)
 
-        ### best model refit on outer CV train set and tested on outer test set
+        # Best model from inner CV, evaluated on the outer test fold
         best_model_xgb = search.best_estimator_
 
-        ## evaluate on test fold of outer CV
         y_pred_xgb = best_model_xgb.predict(X_test)
         y_proba_xgb = best_model_xgb.predict_proba(X_test)[:, 1]
 
@@ -224,7 +211,7 @@ for seed in outer_seeds:
         })
 
 
-## summarize the results
+# --- Summarize nested CV results ---
 results_df_xgb = pd.DataFrame(all_results_xgb)
 
 summary_xgb = results_df_xgb[
@@ -252,24 +239,16 @@ for col in param_cols:
     print(best_params_df_xgb[col].value_counts().head(10))
 
 
-## chat zodat in juiste map wordt opgeslagen
+# --- Save nested CV results to CSV ---
 results_df_xgb.to_csv(os.path.join(results_dir, "results_xgboost_v2.csv"), index=False)
 summary_xgb.to_csv(os.path.join(results_dir, "summary_xgboost_v2.csv"))
 best_params_df_xgb.to_csv(os.path.join(results_dir, "best_params_xgboost_v2.csv"), index=False)
 
-## chat
+
 log("Bestanden opgeslagen: results_xgboost_v2.csv, summary_xgboost_v2.csv, best_params_xgboost_v2.csv")
 
 
-##### ------ final model code -------###
-### cchat 
-# --------------------------------------------------
-# FINAL MODEL FOR RQ2 (SHAP ANALYSIS)
-# --------------------------------------------------
-
-# --------------------------------------------------
-# FINAL MODEL FOR RQ2 (SHAP ANALYSIS)
-# --------------------------------------------------
+# --- Final model: train on a fixed split for use in RQ2 (SHAP analysis) ---
 
 import os
 import joblib

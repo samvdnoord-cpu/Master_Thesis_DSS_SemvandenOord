@@ -1,8 +1,11 @@
-import pandas as pd 
-import numpy as np
-from scipy import stats 
+# --- RQ1: Statistical Comparison of Models ---
 
-## step 1: loading in the results of the models (CSV documents per model)
+# --- Imports ---
+import pandas as pd
+import numpy as np
+from scipy import stats
+
+# --- Step 1: Load nested CV results for each model ---
 nb_path = "results_naive_bayes/results_naive_bayes_v3.csv"
 log_path = "resultaten_logistische_regressie/results_logistic_regression.csv"
 rf_path = "results_random_forest/results_randomforest_v2.csv"
@@ -13,17 +16,15 @@ logistic_regression_results = pd.read_csv(log_path)
 random_forest_results = pd.read_csv(rf_path)
 xgboost_results = pd.read_csv(xgb_path)
 
-### Step 2: check alignment -> must be to see if they all have identical splits (everything needs to be true)
+# --- Step 2: Verify alignment across result files ---
+# All models must have been evaluated on identical seed/fold splits for paired comparisons to be valid
 print(random_forest_results[["seed", "fold"]].equals(naive_bayes_results[["seed", "fold"]]))
 print(random_forest_results[["seed", "fold"]].equals(logistic_regression_results[["seed", "fold"]]))
 print(random_forest_results[["seed", "fold"]].equals(xgboost_results[["seed", "fold"]]))
 
-# corresponds to TRUE -> step 2 check 
 
-
-## Step 3: calculate paired difference 
-## why you must compare models on the exact same splits so this way the models will be compared for every fold and every seed 
-## here you have difference between performance on the same exact same folds and seeds so you can comapre them fairly
+# --- Step 3: Compute paired F1 differences per fold ---
+# Pairing on the same folds and seeds ensures differences reflect model performance, not data variation
 diff_rf_nb = random_forest_results["f1"] - naive_bayes_results["f1"]
 diff_rf_xgb = random_forest_results["f1"] - xgboost_results["f1"]
 diff_rf_log = random_forest_results["f1"] - logistic_regression_results["f1"]
@@ -32,8 +33,8 @@ diff_log_nb = logistic_regression_results["f1"] - naive_bayes_results["f1"]
 diff_xgb_nb = xgboost_results["f1"] - naive_bayes_results["f1"]
 
 
-## step 4: t-tes function -> need resampled t-tes (nadeau & bengio) because there is dependence between folds. 
-## function writing that gets out mean_diff, t-tes, p_value 
+# --- Step 4: Corrected resampled t-test  ---
+# Applies a variance correction to account for the dependence between CV folds
 def corrected_t_test(differences, k=5):
     n = len(differences)
     mean_diff = np.mean(differences)
@@ -42,13 +43,13 @@ def corrected_t_test(differences, k=5):
     correction = (1/ k) + (1 / (k - 1))
 
     t_stat = mean_diff / np.sqrt(correction * var_diff)
-    df = n -1 
+    df = n -1
     p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df))
 
     return mean_diff, t_stat, p_value
 
-## step 5: T-tes implemnetation
-print("Radom forest vs XGBoost")
+# --- Step 5: Run pairwise t-tests ---
+print("Random Forest vs XGBoost")
 print(corrected_t_test(diff_rf_xgb))
 
 print("random forest vs NB")
@@ -67,7 +68,7 @@ print("logistic regression vs NB")
 print(corrected_t_test(diff_log_nb))
 
 
-## step 6: correcting for multiple copmparison (vanaf hier chat)
+# --- Step 6: Bonferroni correction for multiple comparisons ---
 n_tests = 6
 alpha = 0.05
 alpha_bonf = alpha / n_tests
@@ -75,7 +76,7 @@ alpha_bonf = alpha / n_tests
 print("\nBonferroni corrected alpha:")
 print(alpha_bonf)
 
-## step 7: store all the results in a table: 
+# --- Step 7: Collect all pairwise results into a summary table ---
 
 results_list = []
 
@@ -113,5 +114,5 @@ results_table = pd.DataFrame(results_list)
 print("\nStatistical comparison table:")
 print(results_table)
 
-## optional: save results table
+# --- Save results table to CSV ---
 results_table.to_csv("RQ1/statistical_model_comparison_f1_v2.csv", index=False)
